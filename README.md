@@ -1,5 +1,7 @@
 # intelbyte
 
+**Download (Windows):** [IntelByte-Windows.zip](https://github.com/UgIyy/intelbyte/releases/latest/download/IntelByte-Windows.zip) — no Node install required.
+
 Hide your email and phone number on screen while you stream or share your screen.
 
 You tell intelbyte which emails, phone numbers, and names you want to hide. When
