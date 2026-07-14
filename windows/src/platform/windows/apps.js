@@ -374,9 +374,7 @@ export async function runApp(id, extra = []) {
   const cfg = load();
   const app = (cfg.apps || {})[id];
   if (!app) return false;
-  // Chromium browser about to open ⇒ profile is unlocked, so purge protected
-  // values from history/autofill now, before launch (native address bar).
-  if (app.chromium) {
+  if (app.chromium && cfg.scrubAddressBar) {
     try {
       const { scrubChromium, isBrowserRunning } = await import('./chromium.js');
       if (!isBrowserRunning(app.chromium)) await scrubChromium(cfg, app.chromium);
@@ -425,4 +423,39 @@ export async function runningUnprotected(id, app) {
 export async function killApp(app) {
   // /T also kills child processes (browsers/Electron spawn a tree).
   await psAsync(`Start-Process taskkill -ArgumentList '/F','/T','/IM','${app.image}' -WindowStyle Hidden -Wait`).catch(() => {});
+}
+
+async function waitUntilStopped(app, maxMs = 12000) {
+  const deadline = Date.now() + maxMs;
+  while (Date.now() < deadline) {
+    if ((await inspectAppState(app)) === 'stopped') return true;
+    await new Promise((r) => setTimeout(r, 350));
+  }
+  return (await inspectAppState(app)) === 'stopped';
+}
+
+/** Kill, wait for a clean exit, then relaunch one wired app. */
+export async function relaunchApp(id) {
+  const cfg = load();
+  const app = (cfg.apps || {})[id];
+  if (!app) return false;
+  await killApp(app);
+  await waitUntilStopped(app);
+  // Browsers need extra time after taskkill before the profile unlocks.
+  const settle = app.kind === 'browser' ? 2800 : 1200;
+  await new Promise((r) => setTimeout(r, settle));
+  return runApp(id);
+}
+
+/** Restart every wired app that is running without the debug port (Brave, Discord, Electron…). */
+export async function relaunchUnprotectedApps() {
+  const cfg = load();
+  const apps = cfg.apps || {};
+  const relaunched = [];
+  for (const [id, app] of Object.entries(apps)) {
+    const state = await inspectAppState(app);
+    if (state !== 'unprotected') continue;
+    if (await relaunchApp(id)) relaunched.push(app.label);
+  }
+  return relaunched;
 }

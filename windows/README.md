@@ -50,6 +50,31 @@ edits (undone by `unsetup`) and a startup entry (undone by `uninstall`).
 
 ## Install
 
+### Option A — portable `.exe` (recommended)
+
+No Node.js required.
+
+1. Get `IntelByte-Windows.zip` from [Releases](https://github.com/inteIbyte/intelbyte/releases) or build it:
+
+   ```powershell
+   cd windows
+   npm install
+   npm run build:exe
+   ```
+
+2. Unzip and run commands from that folder:
+
+   ```powershell
+   .\IntelByte.exe protect-mail you@example.com
+   .\IntelByte.exe setup
+   .\IntelByte.exe install
+   .\IntelByte.exe tray
+   ```
+
+The zip contains `IntelByte.exe`, a bundled `node\`, and the `app\` folder.
+
+### Option B — from source (Node.js)
+
 1. Install [Node.js 18 or newer](https://nodejs.org) (the LTS version is fine).
 2. Download or clone this repo and install the dependencies:
 

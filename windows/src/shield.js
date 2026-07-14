@@ -113,9 +113,7 @@ export async function runShield(platform, cfg, opts = {}) {
     if (!quiet) warn(`${a.label} is open WITHOUT protection — closing & reopening it in debug mode…`);
     emit({ type: 'relaunch', id, label: a.label });
     try {
-      await platform.killApp(a);
-      await sleep(1800); // let it fully exit before relaunch
-      await platform.runApp(id);
+      await platform.relaunchApp(id);
     } catch {
       // next tick retries
     } finally {

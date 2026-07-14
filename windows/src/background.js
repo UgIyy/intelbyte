@@ -11,16 +11,17 @@ import {
   appendFileSync,
 } from 'fs';
 import { spawn } from 'child_process';
-import { join, dirname } from 'path';
-import { fileURLToPath } from 'url';
+import { join } from 'path';
 import { load, configDir } from './core/config.js';
+import { appRoot, binJs, nodeExe } from './core/paths.js';
 import platform from './platform/index.js';
 import { runShield } from './shield.js';
 import { ps, psq } from './platform/windows/ps.js';
 import { c, ok, info, warn, err, title, line } from './core/ui.js';
 
-const REPO_ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
-const BIN_JS = join(REPO_ROOT, 'bin', 'intelbyte.js');
+const REPO_ROOT = appRoot();
+const BIN_JS = binJs();
+const NODE_EXE = nodeExe();
 
 const DIR = configDir();
 const PID_FILE = join(DIR, 'shield.pid');
@@ -191,7 +192,7 @@ export async function runBackgroundWorker() {
 // flash and no dependency on this terminal staying open.
 export function startDetached() {
   ensureDir();
-  const child = spawn(process.execPath, [BIN_JS, 'shield-bg'], {
+  const child = spawn(NODE_EXE, [BIN_JS, 'shield-bg'], {
     detached: true,
     stdio: 'ignore',
     windowsHide: true,
@@ -232,7 +233,7 @@ export function stop() {
 // A tiny VBS that launches node hidden (window style 0), so login start-up
 // never flashes a console window.
 function writeVbs() {
-  const cmd = `"${process.execPath}" "${BIN_JS}" shield-bg`;
+  const cmd = `"${NODE_EXE}" "${BIN_JS}" shield-bg`;
   const vbsCmd = cmd.replace(/"/g, '""'); // VBS escapes a quote by doubling it
   const vbs =
     'Set sh = CreateObject("WScript.Shell")\r\n' +

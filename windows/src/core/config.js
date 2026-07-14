@@ -31,6 +31,9 @@ const DEFAULTS = {
   version: 3,
   discordSplitTunnel: 'auto',
   autoRelaunch: true,
+  // Live CDP masking already rewrites the address bar; deleting Chromium SQLite
+  // history/autofill on every launch can race profile locks and crash Brave.
+  scrubAddressBar: false,
   emails: [],
   phones: [],
   customs: [],

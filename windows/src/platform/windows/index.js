@@ -9,6 +9,8 @@ import {
   inspectAppState,
   runningUnprotected,
   killApp,
+  relaunchApp,
+  relaunchUnprotectedApps,
 } from './apps.js';
 import { scrubChromium, isBrowserRunning, installedChromiumBrowsers } from './chromium.js';
 import * as firefox from './firefox.js';
@@ -35,6 +37,8 @@ const platform = {
   inspectAppState,
   runningUnprotected,
   killApp,
+  relaunchApp,
+  relaunchUnprotectedApps,
 
   // chromium address-bar scrub
   installedChromiumBrowsers,

@@ -29,12 +29,11 @@ import {
   isAutostartInstalled,
 } from './background.js';
 import { spawn } from 'child_process';
-import { join, dirname } from 'path';
-import { fileURLToPath } from 'url';
+import { join } from 'path';
+import { appRoot, binJs, nodeExe, trayScript } from './core/paths.js';
 
 const VERSION = '0.3.0';
-const REPO_ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
-const TRAY_SCRIPT = join(REPO_ROOT, 'scripts', 'intelbyte-tray.ps1');
+const TRAY_SCRIPT = trayScript();
 
 const CMD = { emails: 'protect-mail', phones: 'protect-phone', customs: 'protect-custom' };
 const PLACEHOLDER = { emails: '<mail...>', phones: '<number...>', customs: '<text...>' };
@@ -273,7 +272,9 @@ async function cmdDoctor() {
       : (await platform.runningUnprotected(id, a))
         ? c.yellow('closed — RUNNING UNPROTECTED, restart it')
         : c.gray('closed — app not running');
-    const bar = a.chromium ? c.gray(' · addr-bar: scrub on launch') : '';
+    const bar = a.chromium
+      ? (cfg.scrubAddressBar ? c.gray(' · addr-bar: scrub on launch') : c.gray(' · addr-bar: live mask'))
+      : '';
     line(`  ${c.cyan(a.label.padEnd(16))} ${c.gray(`port ${a.port} · ${a.protocol}`)}  ${state}${bar}`);
   }
 
@@ -281,13 +282,19 @@ async function cmdDoctor() {
   if (chromeBrowsers.length) {
     line('');
     for (const b of chromeBrowsers) {
-      if (platform.isBrowserRunning(b)) {
-        warn(`${b}: open now — address-bar data is only scrubbed when it's closed (` + c.cyan('intelbyte scrub ' + b) + ' after closing).');
+      if (cfg.scrubAddressBar) {
+        if (platform.isBrowserRunning(b)) {
+          warn(`${b}: open now — address-bar data is only scrubbed when it's closed (` + c.cyan('intelbyte scrub ' + b) + ' after closing).');
+        } else {
+          ok(`${b}: closed — address-bar data scrubbed on next launch.`);
+        }
       } else {
-        ok(`${b}: closed — address-bar data scrubbed on next launch.`);
+        info(`${b}: address bar masked live (history scrub off).`);
       }
     }
-    info('Chromium address bar / autofill is native UI — intelbyte keeps it clean at the source, not by masking.');
+    if (cfg.scrubAddressBar) {
+      info('Chromium address bar / autofill is native UI — intelbyte keeps it clean at the source, not by masking.');
+    }
   }
   line(c.gray('\n  Background: ') + c.cyan('intelbyte install') + c.gray('   Re-scan apps: ') + c.cyan('intelbyte setup'));
 }
@@ -319,8 +326,9 @@ async function cmdSetup() {
   warn('Trade-off: an open debug port is a local attack surface (any local process could');
   line(c.gray('  drive the app). Undo anytime with: ') + c.cyan('intelbyte unsetup'));
 
-  // Address-bar scrub for any CLOSED Chromium browser now.
-  if (buildPairs(load()).length && platform.installedChromiumBrowsers().length) {
+  // Optional address-bar scrub (off by default — live masking handles the omnibox).
+  const cfg = load();
+  if (cfg.scrubAddressBar && buildPairs(cfg).length && platform.installedChromiumBrowsers().length) {
     line('');
     const { scrubbed, locked } = await platform.scrubChromium(load());
     const totals = scrubbed.reduce((m, s) => ((m[s.browser] = (m[s.browser] || 0) + s.removed), m), {});
@@ -333,22 +341,28 @@ async function cmdSetup() {
     if (!scrubbed.length && !locked.length) info('Address-bar scrub: Chromium profiles already clean.');
   }
 
-  // Anything currently running was launched WITHOUT the flag → unprotected.
-  let restartNeeded = false;
-  for (const id of ids) {
-    const a = apps[id];
-    if (!(await probePort(a.port)) && (await platform.runningUnprotected(id, a))) {
-      if (!restartNeeded) line('');
-      restartNeeded = true;
-      warn(`${a.label} is running from BEFORE setup — close it fully and reopen it once (or let the shield relaunch it).`);
-    }
+  // Anything currently running was launched WITHOUT the flag → restart now.
+  const relaunched = await platform.relaunchUnprotectedApps();
+  if (relaunched.length) {
+    line('');
+    for (const label of relaunched) ok(`${label} restarted with protection.`);
   }
 
   line('');
   ok(c.bold('Setup done.') + ' Run it in the background: ' + c.cyan('intelbyte install'));
 }
 
-function cmdUnsetup() {
+async function cmdRelaunchApps() {
+  const cfg = load();
+  if (!Object.keys(cfg.apps || {}).length) {
+    warn('No apps wired yet — run ' + c.cyan('intelbyte setup') + ' first.');
+    return;
+  }
+  const relaunched = await platform.relaunchUnprotectedApps();
+  if (!relaunched.length) info('No open apps needed a restart.');
+  else for (const label of relaunched) ok(`${label} restarted with protection.`);
+}
+
   const cfg = load();
   const { overrides } = platform.unwire(cfg.apps);
   cfg.apps = {};
@@ -467,7 +481,7 @@ function cmdTray() {
     const child = spawn(
       psExe,
       ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-WindowStyle', 'Hidden', '-File', TRAY_SCRIPT,
-        '-NodeExe', process.execPath, '-BinJs', join(REPO_ROOT, 'bin', 'intelbyte.js')],
+        '-NodeExe', nodeExe(), '-BinJs', binJs()],
       { detached: true, stdio: 'ignore', windowsHide: true }
     );
     child.unref();
@@ -527,6 +541,10 @@ export async function run(argv) {
     case 'setup':
       await cmdSetup();
       break;
+    case 'relaunch-apps':
+    case 'relaunch':
+      await cmdRelaunchApps();
+      break;
     case 'unsetup':
       cmdUnsetup();
       break;
@@ -546,12 +564,14 @@ export async function run(argv) {
       cmdUninstall();
       break;
     case 'start':
+      await cmdRelaunchApps();
       cmdStart();
       break;
     case 'stop':
       cmdStop();
       break;
     case 'restart':
+      await cmdRelaunchApps();
       cmdRestart();
       break;
     case 'status':

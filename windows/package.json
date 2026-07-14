@@ -10,7 +10,9 @@
     "start": "node bin/intelbyte.js",
     "install-shield": "node bin/intelbyte.js install",
     "status": "node bin/intelbyte.js status",
-    "doctor": "node bin/intelbyte.js doctor"
+    "doctor": "node bin/intelbyte.js doctor",
+    "build:exe": "powershell -ExecutionPolicy Bypass -File scripts/build-release.ps1",
+    "build:installer": "powershell -ExecutionPolicy Bypass -File scripts/build-installer.ps1"
   },
   "engines": {
     "node": ">=18"
@@ -36,5 +38,9 @@
     "sql.js": "^1.14.1",
     "ws": "^8.21.0"
   },
-  "license": "MIT"
+  "license": "MIT",
+  "devDependencies": {
+    "@yao-pkg/pkg": "^6.21.0",
+    "esbuild": "^0.28.1"
+  }
 }

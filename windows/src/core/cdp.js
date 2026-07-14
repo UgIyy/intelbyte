@@ -79,6 +79,62 @@ export async function startInjector(port, source, onAttach) {
     }
   }
 
+  // Pages that were already open when we attach often need a few passes before
+  // the agent sticks — stagger re-injects instead of making the user refresh.
+  function burstEval(client, sessionId) {
+    const delays = [400, 1200, 2800, 5000];
+    for (const ms of delays) {
+      setTimeout(() => {
+        if (stopped) return;
+        evalNow(client, sessionId).catch(() => {});
+      }, ms);
+    }
+  }
+
+  async function agentAlive(client, sessionId) {
+    try {
+      const opts = { expression: '!!(window.__intelbyteAgent && window.__intelbyteAgent.data)', returnByValue: true };
+      const res = sessionId
+        ? await client.send('Runtime.evaluate', opts, sessionId)
+        : await client.Runtime.evaluate(opts);
+      return !!(res && res.result && res.result.value);
+    } catch {
+      return false;
+    }
+  }
+
+  // One gentle reload when a live http(s) tab resisted injection — replaces
+  // the user hammering F5 several times after protection starts.
+  async function ensureLivePage(client, target) {
+    const url = ((target && target.url) || '').split('#')[0];
+    if (!/^https?:\/\//i.test(url)) return;
+    await sleep(700);
+    if (stopped || (await agentAlive(client))) return;
+    await evalNow(client);
+    await sleep(500);
+    if (stopped || (await agentAlive(client))) return;
+    try {
+      await client.Page.reload({ ignoreCache: false });
+    } catch {
+      // ignore — burst eval / next scan still covers it
+    }
+  }
+
+  async function waitForLoad(client) {
+    try {
+      const res = await client.Runtime.evaluate({ expression: 'document.readyState', returnByValue: true });
+      if (res && res.result && res.result.value === 'loading') {
+        await new Promise((resolve) => {
+          const done = () => resolve();
+          client.once('Page.loadEventFired', done);
+          setTimeout(done, 10000);
+        });
+      }
+    } catch {
+      // ignore
+    }
+  }
+
   // Chromium puts cross-origin iframes in their own OOPIF targets. Auto-attach
   // (flatten) and arm + inject each child session, recursively for nested frames.
   async function wireChildFrames(client) {
@@ -87,6 +143,7 @@ export async function startInjector(port, source, onAttach) {
       if (!sid || stopped) return;
       await armPreload(client, sid);
       await evalNow(client, sid);
+      burstEval(client, sid);
       await client
         .send(
           'Target.setAutoAttach',
@@ -126,6 +183,7 @@ export async function startInjector(port, source, onAttach) {
     let ctx = null;
     client.on('Runtime.executionContextCreated', (e) => {
       ctx = e.context && e.context.id;
+      if (!stopped) evalNow(client).catch(() => {});
     });
     client.on('disconnect', () => {
       clients.delete(target.id);
@@ -136,9 +194,11 @@ export async function startInjector(port, source, onAttach) {
       evalNow(client).catch(() => {});
     };
     client.on('Page.loadEventFired', onNav);
+    client.on('Page.domContentLoaded', onNav);
     client.on('Page.frameNavigated', (e) => {
       if (e && e.frame && !e.frame.parentId) onNav(); // top frame only
     });
+    client.on('Page.navigatedWithinDocument', onNav);
 
     try {
       await client.Runtime.enable();
@@ -146,6 +206,7 @@ export async function startInjector(port, source, onAttach) {
       // ignore
     }
     await armPreload(client); // document-start for every future navigation (no flash)
+    await waitForLoad(client);
     // The page that is already open right now:
     try {
       await client.Runtime.evaluate({ expression: source });
@@ -156,6 +217,8 @@ export async function startInjector(port, source, onAttach) {
         await client.Runtime.evaluate({ expression: source, contextId: ctx }).catch(() => {});
       }
     }
+    burstEval(client);
+    ensureLivePage(client, target).catch(() => {});
     await wireChildFrames(client).catch(() => {});
     report(target.id, target);
   }

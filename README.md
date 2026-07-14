@@ -70,7 +70,21 @@ intelbyte setup                            # 2. one time: prepare every app
 intelbyte                                  # 3. run it while you stream
 ```
 
-**Windows** (PowerShell)
+**Windows** (no Node install — portable `.exe`)
+
+1. Download or build the release zip from the [`windows`](./windows) folder.
+2. Unzip `IntelByte-Windows.zip`.
+3. Open PowerShell in that folder and run:
+
+```powershell
+.\IntelByte.exe protect-mail you@example.com
+.\IntelByte.exe setup
+.\IntelByte.exe install
+```
+
+Build the zip yourself: `cd windows` then `npm run build:exe`.
+
+**Windows** (developers — Node.js installed)
 
 ```powershell
 cd windows
